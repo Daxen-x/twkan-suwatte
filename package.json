@@ -12,5 +12,8 @@
   },
   "suwatte": {
     "listName": "TWKan 台灣小說網 - 個人書源"
+  },
+  "dependencies": {
+    "opencc-js": "1.4.2"
   }
 }
