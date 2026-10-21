@@ -2,16 +2,17 @@
 "use httpclient";
 import { ContentRating, ContentStatus, ContentType, type SourceInfo } from "@suwatte/toolchain/types";
 const ROOT = "https://twkan.com";
-declare const HttpClient: new(options: {baseURL:string;headers?:Record<string,string>}) => {get(path:string):Promise<{ok:boolean;status:number;text():Promise<string>}>};
+declare const HttpClient: new(options: {baseUrl:string;headers?:Record<string,string>}) => {get(path:string):Promise<{ok:boolean;status:number;text():Promise<string>}>};
 const clean=(s:string)=>s.replace(/<script[^>]*>[\s\S]*?<\/script>/gi,"").replace(/<[^>]+>/g," ").replace(/&nbsp;/g," ").replace(/&amp;/g,"&").trim();
 const attr=(s:string,key:string)=>{const m=s.match(new RegExp(key+'\\s*=\\s*["\\x27]([^"\\x27]+)["\\x27]','i'));return m?.[1]||""};
 const meta=(html:string,key:string)=>(html.match(/<meta[^>]*>/gi)||[]).map(x=>({k:attr(x,"property")||attr(x,"name"),v:attr(x,"content")})).find(x=>x.k===key)?.v||"";
 const full=(s:string)=>s.startsWith("http")?s:ROOT+"/"+s.replace(/^\//,"");
 const search=(html:string)=>{const result:any[]=[],seen=new Set<string>();for(const row of html.match(/<li\b[^>]*>[\s\S]*?<\/li>/gi)||[]){const h=row.match(/<h3[^>]*>[\s\S]*?<\/h3>/i)?.[0]||"";const a=h.match(/<a[^>]*>[\s\S]*?<\/a>/i)?.[0]||"";const id=attr(a,"href").match(/\/book\/(\d+)/)?.[1];if(!id||seen.has(id))continue;seen.add(id);const img=row.match(/<img[^>]*>/i)?.[0]||"";result.push({id,title:clean(a),subtitle:clean(row.match(/<label[^>]*>[\s\S]*?<\/label>/i)?.[0]||""),coverImage:full(attr(img,"data-src")||attr(img,"src")||"/favicon.ico")});}return result;};
 export default class TWKan {
-static info:SourceInfo={id:"zh-hant.twkan.com",name:"TWKan 台灣小說網",version:1.01,website:ROOT,languages:["zh-Hant"],rating:ContentRating.EVERYONE};
-client=new HttpClient({baseURL:ROOT,headers:{"User-Agent":"Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile Safari/604.1","Referer":ROOT+"/"}});
-async html(url:string){const r=await this.client.get(url);if(!r.ok)throw new Error("TWKan HTTP "+r.status);return r.text();}
+static info:SourceInfo={id:"zh-hant.twkan.com",name:"TWKan 台灣小說網",version:1.02,website:ROOT,languages:["zh-Hant"],rating:ContentRating.EVERYONE};
+client=new HttpClient({baseUrl:ROOT,headers:{"User-Agent":"Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile Safari/604.1","Referer":ROOT+"/"}});
+async html(url:string){const r=await this.client.get(full(url));if(!r.ok)throw new Error("TWKan HTTP "+r.status);return r.text();}
+async getHomePage(){return {sections:[],isLastPage:true};}
 async getSearchResults(req:{query?:string},page:number){const q=(req.query||"").trim();if(!q)return {items:[],isLastPage:true};const html=await this.html("/search/"+encodeURIComponent(q)+"/"+Math.max(page,1)+".html");const items=search(html);return {items,isLastPage:items.length===0||!/(下一頁|下一页|next)/i.test(html)};}
 async getItemList(req:{query?:string},page:number){return this.getSearchResults(req,page);}
 async getContent(id:string){const html=await this.html("/book/"+id+".html");const title=meta(html,"og:novel:book_name")||clean(html.match(/<h1[^>]*>[\s\S]*?<\/h1>/i)?.[0]||"");if(!title)throw new Error("书籍标题为空");const author=meta(html,"og:novel:author"),cover=meta(html,"og:image");return {title,coverImage:full(cover||"/favicon.ico"),summary:meta(html,"og:description"),contentType:ContentType.NOVEL,status:/完本|完結|已完结/.test(meta(html,"og:novel:status"))?ContentStatus.COMPLETED:ContentStatus.ONGOING,webUrl:ROOT+"/book/"+id+".html",credits:author?[{name:author,role:"Story"}]:[]};}
