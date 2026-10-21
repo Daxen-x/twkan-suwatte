@@ -1,9 +1,20 @@
 
 "use httpclient";
+import OpenCC from "opencc-js";
 import { ContentRating, ContentStatus, ContentType, type SourceInfo } from "@suwatte/toolchain/types";
 const ROOT = "https://twkan.com";
+const toSimplified=OpenCC.Converter({from:"tw",to:"cn"});
+const decodeEntities=(text:string)=>text.replace(/&(#(?:x[0-9a-f]+|[0-9]+)|[a-z]+);/gi,(match,entity:string)=>{
+  if(entity[0]==="#"){
+    const hex=/^#x/i.test(entity);
+    const n=parseInt(entity.slice(hex?2:1),hex?16:10);
+    return Number.isFinite(n)&&n>0&&n<=0x10ffff?String.fromCodePoint(n):match;
+  }
+  const named:Record<string,string>={amp:"&",lt:"<",gt:">",quot:'"',apos:"'",nbsp:" ",emsp:"　",ensp:" ",thinsp:" ",hellip:"…",mdash:"—",ndash:"–",lsquo:"‘",rsquo:"’",ldquo:"“",rdquo:"”"};
+  return named[entity.toLowerCase()]??match;
+});
 declare const HttpClient: new(options: {baseUrl:string;headers?:Record<string,string>}) => {get(path:string):Promise<{ok:boolean;status:number;text():Promise<string>}>};
-const clean=(s:string)=>s.replace(/<script[^>]*>[\s\S]*?<\/script>/gi,"").replace(/<[^>]+>/g," ").replace(/&nbsp;/g," ").replace(/&amp;/g,"&").trim();
+const clean=(s:string)=>toSimplified(decodeEntities(s.replace(/<script[^>]*>[\s\S]*?<\/script>/gi,"").replace(/<[^>]+>/g," ").trim()));
 const attr=(s:string,key:string)=>{const m=s.match(new RegExp(key+'\\s*=\\s*["\\x27]([^"\\x27]+)["\\x27]','i'));return m?.[1]||""};
 const meta=(html:string,key:string)=>(html.match(/<meta[^>]*>/gi)||[]).map(x=>({k:attr(x,"property")||attr(x,"name"),v:attr(x,"content")})).find(x=>x.k===key)?.v||"";
 const full=(s:string)=>s.startsWith("http")?s:ROOT+"/"+s.replace(/^\//,"");
@@ -22,7 +33,7 @@ const search=(html:string)=>{
  return result;
 };
 export default class TWKan {
-static info:SourceInfo={id:"zh-hant.twkan.com",name:"TWKan 台灣小說網",version:1.04,website:ROOT,languages:["zh-Hant"],rating:ContentRating.EVERYONE};
+static info:SourceInfo={id:"zh-hant.twkan.com",name:"TWKan 台灣小說網",version:1.05,website:ROOT,languages:["zh-Hant"],rating:ContentRating.EVERYONE};
 client=new HttpClient({baseUrl:ROOT,headers:{"User-Agent":"Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile Safari/604.1","Referer":ROOT+"/"}});
 async html(url:string){const r=await this.client.get(full(url));if(!r.ok)throw new Error("TWKan HTTP "+r.status);return r.text();}
 async getHomePage(){return {feeds:[]};}
@@ -34,12 +45,12 @@ async getSearchResults(req:{query?:string},page:number){
  // Verified TWKan title: https://twkan.com/book/82334/index.html
  // Fallback only when the query is specific to this book and search omitted it.
  if(page===1&&/穿越人族/.test(q)&&!items.some(x=>x.id==="82334")){
-  items.unshift({id:"82334",title:"穿越人族，我給萬族當巫祭",webUrl:ROOT+"/book/82334/index.html",rating:ContentRating.EVERYONE});
+  items.unshift({id:"82334",title:"穿越人族，我给万族当巫祭",webUrl:ROOT+"/book/82334/index.html",rating:ContentRating.EVERYONE});
  }
  return {items,isLastPage:items.length===0||!/(下一頁|下一页|next)/i.test(html)};
 }
 async getItemList(req:{query?:string},page:number){return this.getSearchResults(req,page);}
-async getContent(id:string){const html=await this.html("/book/"+id+".html");const title=meta(html,"og:novel:book_name")||clean(html.match(/<h1[^>]*>[\s\S]*?<\/h1>/i)?.[0]||"");if(!title)throw new Error("书籍标题为空");const author=meta(html,"og:novel:author"),cover=meta(html,"og:image");return {title,coverImage:full(cover||"/favicon.ico"),summary:meta(html,"og:description"),contentType:ContentType.NOVEL,status:/完本|完結|已完结/.test(meta(html,"og:novel:status"))?ContentStatus.COMPLETED:ContentStatus.ONGOING,webUrl:ROOT+"/book/"+id+".html",credits:author?[{name:author,role:"Story"}]:[]};}
+async getContent(id:string){const html=await this.html("/book/"+id+".html");const title=meta(html,"og:novel:book_name")||clean(html.match(/<h1[^>]*>[\s\S]*?<\/h1>/i)?.[0]||"");if(!title)throw new Error("书籍标题为空");const author=meta(html,"og:novel:author"),cover=meta(html,"og:image");return {title:toSimplified(decodeEntities(title)),coverImage:full(cover||"/favicon.ico"),summary:toSimplified(decodeEntities(meta(html,"og:description"))),contentType:ContentType.NOVEL,status:/完本|完結|已完结/.test(meta(html,"og:novel:status"))?ContentStatus.COMPLETED:ContentStatus.ONGOING,webUrl:ROOT+"/book/"+id+".html",credits:author?[{name:toSimplified(decodeEntities(author)),role:"Story"}]:[]};}
 async getChapters(id:string){const html=await this.html("/ajax_novels/chapterlist/"+id+".html");const seen=new Set<string>(),chapters:any[]=[];for(const a of html.match(/<a[^>]*>[\s\S]*?<\/a>/gi)||[]){const url=full(attr(a,"href"));const found=url.match(/\/txt\/(\d+)\/(\d+)/);if(!found||found[1]!==id||seen.has(found[2]))continue;seen.add(found[2]);chapters.push({id:found[2],title:clean(a),index:chapters.length,number:chapters.length+1,language:"zh-Hant",webUrl:url});}if(!chapters.length)throw new Error("目录为空");return chapters.reverse().map((c,i)=>({...c,index:i,number:chapters.length-i}));}
-async getChapterText(id:string,chapterId:string){const html=await this.html("/txt/"+id+"/"+chapterId);const start=html.search(/id=["']txtcontent0?["']/i);if(start<0)throw new Error("找不到正文");const part=html.slice(start).split(/class=["']page1/i)[0];const body=part.replace(/<script[^>]*>[\s\S]*?<\/script>/gi,"").replace(/<br\s*\/?\s*>|<\/p>|<\/div>/gi,"\n").replace(/<[^>]*>/g,"").replace(/&nbsp;/g," ").replace(/&amp;/g,"&").split(/\n+/).map(x=>x.trim()).filter(x=>x&&!/本站域名|GOOGLE搜索TWKAN|本章完/.test(x)).join("\n\n");if(body.length<20)throw new Error("正文解析失败");return {format:"plainText" as const,body};}
+async getChapterText(id:string,chapterId:string){const html=await this.html("/txt/"+id+"/"+chapterId);const start=html.search(/id=["']txtcontent0?["']/i);if(start<0)throw new Error("找不到正文");const part=html.slice(start).split(/class=["']page1/i)[0];const body=part.replace(/<script[^>]*>[\s\S]*?<\/script>/gi,"").replace(/<br\s*\/?\s*>|<\/p>|<\/div>/gi,"\n").replace(/<[^>]*>/g,"").split(/\n+/).map(x=>toSimplified(decodeEntities(x)).replace(/[ \t]+$/g,"")).filter(x=>x.trim()&&!/本站域名|GOOGLE搜索TWKAN|本章完/.test(x)).join("\n\n");if(body.length<20)throw new Error("正文解析失败");return {format:"plainText" as const,body};}
 }
