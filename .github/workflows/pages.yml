@@ -52,3 +52,28 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+      - name: Check live Pages bundles
+        run: |
+          python3 - <<'PY'
+          import json, urllib.request, time
+          root = "https://daxen-x.github.io/twkan-suwatte/"
+          for attempt in range(8):
+              try:
+                  with urllib.request.urlopen(root + "sources.json?v=" + str(int(time.time())), timeout=20) as response:
+                      manifest = json.loads(response.read())
+                  for source in manifest["sources"]:
+                      url = root + "sources/" + source["path"] + ".stt?v=" + str(int(time.time()))
+                      with urllib.request.urlopen(url, timeout=20) as response:
+                          payload = response.read()
+                          content_type = response.headers.get("Content-Type", "")
+                      preview = payload[:100]
+                      print(source["id"], "bytes=", len(payload), "type=", content_type, "prefix=", repr(preview))
+                      if not payload or payload.lstrip().startswith(b"<"):
+                          raise RuntimeError("Live bundle returned HTML or empty data: " + url)
+                  break
+              except Exception as error:
+                  if attempt == 7: raise
+                  print("Pages not ready:", str(error))
+                  time.sleep(10)
+          PY
+
