@@ -1,5 +1,6 @@
 
 "use httpclient";
+// @ts-ignore OpenCC is ESM-only; esbuild bundles it for the Suwatte JSC artifact.
 import OpenCC from "opencc-js";
 import { ContentRating, ContentStatus, ContentType, type SourceInfo } from "@suwatte/toolchain/types";
 const ROOT = "https://twkan.com";
@@ -33,7 +34,7 @@ const search=(html:string)=>{
  return result;
 };
 export default class TWKan {
-static info:SourceInfo={id:"zh-hant.twkan.com",name:"TWKan 台灣小說網",version:1.05,website:ROOT,languages:["zh-Hant"],rating:ContentRating.EVERYONE};
+static info:SourceInfo={id:"zh-hant.twkan.com",name:"TWKan 台灣小說網",version:1.06,website:ROOT,languages:["zh-Hant"],rating:ContentRating.EVERYONE};
 client=new HttpClient({baseUrl:ROOT,headers:{"User-Agent":"Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile Safari/604.1","Referer":ROOT+"/"}});
 async html(url:string){const r=await this.client.get(full(url));if(!r.ok)throw new Error("TWKan HTTP "+r.status);return r.text();}
 async getHomePage(){return {feeds:[]};}
