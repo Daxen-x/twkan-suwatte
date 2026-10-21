@@ -15,6 +15,5 @@
   },
   "dependencies": {
     "opencc-js": "1.4.2"
-  },
-  "type": "module"
+  }
 }
