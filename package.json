@@ -1,0 +1,17 @@
+{
+  "name": "twkan-suwatte",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "suwatte build",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "devDependencies": {
+    "@suwatte/toolchain": "^1.0.0",
+    "typescript": "^5.6.3"
+  },
+  "suwatte": {
+    "listName": "TWKan 台灣小說網 - 個人書源"
+  }
+}
